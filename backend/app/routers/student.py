@@ -21,4 +21,5 @@ def dashboard(u=Depends(guard('student'))):
  return {'courses':[dict(x) for x in rows],'streak':streak}
 @router.get('/student/heatmap')
 def heatmap(u=Depends(guard('student'))):
- c=db();r=c.execute("select date(first_at) date,count(*) count from (select problem_id,min(created_at) first_at from submissions where student_id=? and status='ACCEPTED' group by problem_id) group by date(first_at) order by date(first_at) desc limit 365",(u['id'],)).fetchall();c.close();return [dict(x) for x in r]
+ c=db();r=c.execute('select date(created_at) date,count(*) count from submissions where student_id=? and date(created_at)>=date("now","-365 day") group by date(created_at) order by date(created_at) desc',(u['id'],)).fetchall();c.close();return [dict(x) for x in r]
+
