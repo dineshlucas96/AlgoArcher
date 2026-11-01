@@ -165,5 +165,3 @@ textarea.editor:focus { box-shadow: none; }
   .page { padding: 22px 16px 40px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
- 
-Claude finished the response

@@ -1,10 +1,10 @@
-﻿"""End-to-end smoke checks for a freshly seeded AlgoArcher server."""
+"""End-to-end smoke checks for a freshly seeded AlgoArcher server."""
 import os, sys, time
 from pathlib import Path
 import requests
 from openpyxl import load_workbook
 
-BASE = os.getenv('SMOKE_BASE_URL', 'http://127.0.0.1:8000')
+BASE = os.getenv('SMOKE_BASE_URL', 'http://127.0.0.1:8010')
 ROOT = Path(__file__).resolve().parents[1]
 results = []
 
@@ -50,7 +50,7 @@ def main():
     wrong = 'print(0)'
     def accepted_submit():
         time.sleep(3.1)
-        r = requests.post(BASE + '/problems/1/submit', headers=sh, json={'source_code': correct}, timeout=30)
+        r = requests.post(BASE + '/problems/1/submit', headers=sh, json={'source_code': correct, 'course_id': course_id}, timeout=30)
         expect(r.status_code == 200, f'correct submit HTTP {r.status_code}: {r.text}')
         data = r.json(); expect(data.get('verdict') == 'ACCEPTED', f'verdict={data.get("verdict")}')
         expect(not any(k in data for k in ('tests','hidden','expected','input')), 'hidden test data exposed')
@@ -58,7 +58,7 @@ def main():
 
     def wrong_submit():
         time.sleep(3.1)
-        r = requests.post(BASE + '/problems/1/submit', headers=sh, json={'source_code': wrong}, timeout=30)
+        r = requests.post(BASE + '/problems/1/submit', headers=sh, json={'source_code': wrong, 'course_id': course_id}, timeout=30)
         expect(r.status_code == 200, f'wrong submit HTTP {r.status_code}: {r.text}')
         expect(r.json().get('verdict') == 'WRONG_ANSWER', f'verdict={r.json().get("verdict")}')
     check('wrong Sum of Array submit', wrong_submit)
@@ -79,7 +79,7 @@ def main():
         cs = json_get('/faculty/courses', fh); expect(cs, 'faculty has no courses')
         d = json_get(f'/faculty/courses/{cs[0]["id"]}/dashboard', fh); expect(d.get('students') is not None, 'missing students')
         expect(all(k in d['students'][0] for k in ('easy','medium','hard','total')), 'faculty counts missing')
-        r = requests.get(f'/faculty/courses/{cs[0]["id"]}/report', headers=fh, timeout=20); expect(r.status_code == 200, f'report HTTP {r.status_code}')
+        r = requests.get(BASE+f'/faculty/courses/{cs[0]["id"]}/report', headers=fh, timeout=20); expect(r.status_code == 200, f'report HTTP {r.status_code}')
         wb = load_workbook(__import__('io').BytesIO(r.content), read_only=True); headers=tuple(next(wb.active.iter_rows(values_only=True)))
         expect(headers == ('Reg No','Student Name','Easy Solved','Medium Solved','Hard Solved','Total Solved'), f'bad xlsx headers {headers}')
     check('faculty courses/dashboard/report', faculty_views)
@@ -112,7 +112,7 @@ def main():
     check('role guards', guards)
 
     def invalid_action():
-        time.sleep(3.1);r=requests.post(BASE+'/problems/1/anything',headers=sh,json={'source_code':correct});expect(r.status_code==404,f'HTTP {r.status_code}')
+        time.sleep(3.1);r=requests.post(BASE+'/problems/1/anything',headers=sh,json={'source_code':correct, 'course_id':course_id});expect(r.status_code==404,f'HTTP {r.status_code}')
     check('invalid problem action returns 404', invalid_action)
 
     print('check | result | reason')
