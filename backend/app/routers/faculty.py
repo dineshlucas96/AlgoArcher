@@ -31,7 +31,7 @@ def courses(u=Depends(guard('faculty'))):
  c=db();r=c.execute('select c.* from courses c join faculty_courses f on f.course_id=c.id where f.faculty_id=?',(u['id'],)).fetchall();c.close();return [dict(x) for x in r]
 @router.get('/faculty/courses/{cid}/filters')
 def filters(cid:int,u=Depends(guard('faculty'))):
- code,rows=data(cid,u['id']);return {'course_code':code,'dept':sorted({str(x['dept']) for x in rows}),'year':sorted({x['year'] for x in rows}),'section':sorted({str(x['section']) for x in rows})}
+ _,rows=data(cid,u['id']);return {'dept':sorted({str(x['dept']) for x in rows}),'year':sorted({x['year'] for x in rows}),'section':sorted({str(x['section']) for x in rows})}
 @router.get('/faculty/courses/{cid}/dashboard')
 def dashboard(cid:int,dept:str=None,year:int=None,section:str=None,u=Depends(guard('faculty'))):
  code,rows=data(cid,u['id'],dept,year,section);average=sum(i['total'] for i in rows)/len(rows) if rows else 0;return {'students':rows,'average':average,'average_solved':average}
