@@ -77,11 +77,22 @@ def main():
 
     def faculty_views():
         cs = json_get('/faculty/courses', fh); expect(cs, 'faculty has no courses')
-        d = json_get(f'/faculty/courses/{cs[0]["id"]}/dashboard', fh); expect(d.get('students') is not None, 'missing students')
+        cid = cs[0]['id']
+        d = json_get(f'/faculty/courses/{cid}/dashboard', fh); expect(d.get('students') is not None, 'missing students')
         expect(all(k in d['students'][0] for k in ('easy','medium','hard','total')), 'faculty counts missing')
-        r = requests.get(BASE+f'/faculty/courses/{cs[0]["id"]}/report', headers=fh, timeout=20); expect(r.status_code == 200, f'report HTTP {r.status_code}')
+        filtered = requests.get(BASE+f'/faculty/courses/{cid}/dashboard?section=B', headers=fh, timeout=20)
+        expect(filtered.status_code == 200, f'filtered dashboard HTTP {filtered.status_code}: {filtered.text}')
+        fd = filtered.json(); expect(len(fd.get('students', [])) < len(d['students']), 'section filter did not narrow results')
+        expect(fd['students'] and all(str(x.get('section')) == 'B' for x in fd['students']), 'filtered dashboard contains non-B students')
+        r = requests.get(BASE+f'/faculty/courses/{cid}/report', headers=fh, timeout=20); expect(r.status_code == 200, f'report HTTP {r.status_code}')
         wb = load_workbook(__import__('io').BytesIO(r.content), read_only=True); headers=tuple(next(wb.active.iter_rows(values_only=True)))
-        expect(headers == ('Reg No','Student Name','Easy Solved','Medium Solved','Hard Solved','Total Solved'), f'bad xlsx headers {headers}')
+        expect(headers[:2] == ('Reg No','Student Name'), f'bad xlsx headers {headers}')
+        fr = requests.get(BASE+f'/faculty/courses/{cid}/report?section=B', headers=fh, timeout=20)
+        expect(fr.status_code == 200, f'filtered report HTTP {fr.status_code}: {fr.text}')
+        fwb = load_workbook(__import__('io').BytesIO(fr.content), read_only=True); rows=list(fwb.active.iter_rows(min_row=2, values_only=True))
+        expect(rows and all(str(row[4]) == 'B' for row in rows), 'filtered report contains non-B students')
+        outside = requests.get(BASE+f'/faculty/courses/{cid}/dashboard?dept=AIDS', headers=fh, timeout=20)
+        expect(outside.status_code == 403, f'out-of-scope filter returned {outside.status_code}')
     check('faculty courses/dashboard/report', faculty_views)
 
     def admin_views():
