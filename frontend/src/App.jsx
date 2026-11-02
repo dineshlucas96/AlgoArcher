@@ -1,6 +1,224 @@
-import React,{useEffect,useState} from 'react';
-const API=import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010';const auth=()=>({Authorization:'Bearer '+localStorage.getItem('aa_token')});
-async function api(p,o={}){let r=await fetch(API+p,{...o,headers:{'Content-Type':'application/json',...auth(),...(o.headers||{})}});let x=await r.json();if(!r.ok)throw Object.assign(Error(x.detail||'Request failed'),{status:r.status});return x}
-const go=p=>{history.pushState({},'',p);dispatchEvent(new Event('popstate'))};
-function Login({done}){let[role,setRole]=useState('student');let[email,setEmail]=useState('alice@college.edu');let[pw,setPw]=useState('S001');let[err,setErr]=useState('');function choose(r){setRole(r);setEmail(r==='faculty'?'faculty1@college.edu':r==='admin'?'admin@college.edu':'alice@college.edu');setPw(r==='faculty'?'F001':r==='admin'?'Admin@123':'S001')}return <div className="login-wrap"><div className="login-card"><h1>AlgoArcher</h1><div><button onClick={()=>choose('student')}>Student Login</button><button onClick={()=>choose('faculty')}>Faculty Login</button><button onClick={()=>choose('admin')}>Admin Login</button></div><div className="field"><label>Email</label><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email"/></div><div className="field"><label>Password</label><input value={pw} onChange={e=>setPw(e.target.value)} type="password" placeholder="Password"/></div><button className="btn btn-primary" onClick={async()=>{try{let x=await api('/auth/login',{method:'POST',body:JSON.stringify({email,password:pw})});localStorage.setItem('aa_token',x.access_token);localStorage.setItem('aa_role',x.user.role);localStorage.setItem('aa_user',JSON.stringify(x.user));done(x.user);go(x.user.role==='faculty'?'/faculty':x.user.role==='admin'?'/admin':'/student')}catch(e){setErr(e.message)}}}>Sign in</button>{err&&<div className="alert error">{err}</div>}<small>Demo faculty: faculty1@college.edu / F001</small></div></div>}function Nav(){let role=localStorage.getItem('aa_role')||'student';let[firstCourse,setFirstCourse]=useState();useEffect(()=>{if(role==='student')api('/student/courses').then(x=>setFirstCourse(x[0]?.id)).catch(()=>{})},[role]);let user=(()=>{try{return JSON.parse(localStorage.getItem('aa_user')||'{}')}catch{return {}}})();let home=role==='faculty'?'/faculty':role==='admin'?'/admin':'/student';let links=role==='faculty'?[['/faculty','Courses']]:role==='admin'?[['/admin','Dashboard'],['/admin/upload/students','Student upload'],['/admin/upload/faculty','Faculty upload']]:[['/student','Courses'],firstCourse&&['/courses/'+firstCourse+'/leaderboard','Leaderboard'],['/student/dashboard','Dashboard'],['/student/achievements','Achievements']].filter(Boolean);return <aside className="sidebar"><div className="brand" onClick={()=>go(home)}>AlgoArcher</div><div>{links.map(([href,label])=><a href={href} className={'nav-link '+(location.pathname===href?'active':'')} onClick={e=>{e.preventDefault();go(href)}} key={href}>{label}</a>)}</div><div className="spacer"/><div className="who"><div>{user.name||user.email||'User'}</div><div>{role}</div></div><button onClick={()=>{localStorage.clear();location.reload()}}>Logout</button></aside>}function Home(){let[c,setC]=useState(),[err,setErr]=useState('');useEffect(()=>{api('/student/courses').then(setC).catch(e=>setErr(e.message))},[]);if(err)return <div className="empty">{err}</div>;if(!c)return <div className="loading">Loading courses...</div>;if(!c.length)return <div className="empty">No courses found.</div>;return <><div className="page-head"><div><h1>My courses</h1><p className="muted">Continue practicing your enrolled courses.</p></div></div><div className="grid cols-3">{c.map((x,i)=>{let pct=x.total?100*(x.solved||0)/x.total:0;return <a className={`card link tint-${i%4+1}`} href={'/courses/'+x.id} onClick={e=>{e.preventDefault();go('/courses/'+x.id)}} key={x.id}><h2>{x.name}</h2><p className="muted">{x.code}</p><div className="progress"><span style={{width:pct+'%'}}/></div><p>{x.solved||0} of {x.total||0} solved</p></a>})}</div></>}function Course({id}){let[p,setP]=useState(),[err,setErr]=useState('');useEffect(()=>{api('/courses/'+id+'/problems').then(setP).catch(e=>setErr(e.message))},[id]);if(err)return <div className="empty">{err}</div>;if(!p)return <div className="loading">Loading problems...</div>;return <><div className="page-head"><div><h1>Problems</h1><p className="muted">Choose a problem to start solving.</p></div><a className="btn btn-ghost" href={`/courses/${id}/leaderboard`} onClick={e=>{e.preventDefault();go(`/courses/${id}/leaderboard`)}}>Leaderboard</a></div>{!p.length?<div className="empty">No problems found.</div>:<table><thead><tr><th>Title</th><th>Difficulty</th><th>Points</th><th>Status</th></tr></thead><tbody>{p.map(x=><tr key={x.id} onClick={()=>go(`/courses/${id}/problems/${x.id}`)}><td><a href={`/courses/${id}/problems/${x.id}`} onClick={e=>e.preventDefault()}>{x.title}</a></td><td><span className={`badge ${x.difficulty}`}>{x.difficulty}</span></td><td>{x.points}</td><td>{x.solved&&<span className="badge solved">Solved</span>}</td></tr>)}</tbody></table>}</>}function Leaderboard({id}){let[d,setD]=useState(),[err,setErr]=useState('');useEffect(()=>{api('/courses/'+id+'/leaderboard').then(setD).catch(e=>setErr(e.message))},[id]);if(err)return <div className="empty">{err}</div>;if(!d)return <div className="loading">Loading leaderboard...</div>;if(!d.rows?.length)return <div className="empty">No leaderboard data yet.</div>;return <><div className="page-head"><div><h1>Leaderboard</h1><p className="muted">Course rankings and points.</p></div></div><div className="card">Your rank: {d.my_rank??d.your_rank} of {d.total}</div><table><thead><tr><th>Rank</th><th>Name</th><th>Reg No</th><th>Solved</th><th>Points</th></tr></thead><tbody>{d.rows.map(x=><tr key={x.reg_no} className={`${x.current?'rank-me':''} ${x.rank===1?'rank-1':''}`}><td className="rank">{x.rank}</td><td>{x.name}</td><td>{x.reg_no}</td><td>{x.solved}</td><td>{x.points}</td></tr>)}</tbody></table></>}function Problem({cid,pid}){let[p,setP]=useState(),[code,setCode]=useState(''),[out,setOut]=useState(),[mode,setMode]=useState(''),[busy,setBusy]=useState(false),[err,setErr]=useState('');useEffect(()=>{api(`/problems/${pid}?course_id=${cid}`).then(x=>{setP(x);setCode(x.starter_code)}).catch(e=>setErr(e.message))},[pid,cid]);if(err)return <div className="empty">{err}</div>;if(!p)return <div className="loading">Loading problem...</div>;async function exec(action){setBusy(true);setErr('');setMode(action);try{setOut(await api(`/problems/${pid}/${action}`,{method:'POST',body:JSON.stringify({source_code:code,course_id:Number(cid)})}))}catch(e){setErr(e.status===429?'Please wait a few seconds.':e.status===503?'Runner unavailable.':e.message)}finally{setBusy(false)}}let verdict=out?.verdict||out?.status;let ok=verdict==='ACCEPTED';return <div className="split"><section className="split-left"><div className="meta"><h1>{p.title}</h1><span className={`badge ${p.difficulty}`}>{p.difficulty}</span><span className="muted">{p.points} points</span></div><div>{p.description}</div><h3>Sample cases</h3>{(p.samples||[]).map((x,i)=><pre className="sample" key={i}>Input:{`\n`}{x.input||'(empty)'}{`\n\n`}Expected output:{`\n`}{x.output}</pre>)}</section><section className="split-right"><div className="editor-bar"><span className="muted">Python 3</span><div className="actions"><button className="btn btn-ghost" disabled={busy} onClick={()=>exec('run')}>{busy?'Running…':'Run'}</button><button className="btn btn-primary" disabled={busy} onClick={()=>exec('submit')}>{busy?'Running…':'Submit'}</button></div></div><textarea className="editor" spellCheck={false} value={code} onChange={e=>setCode(e.target.value)} disabled={busy}/><div className="console">{err&&<div className="alert error">{err}</div>}{busy&&<div className="muted">Running…</div>}{!busy&&!err&&!out&&<div className="muted">Run your code to see results here.</div>}{!busy&&!err&&out&&mode==='submit'&&<><div className={`verdict ${ok?'ok':'bad'}`}>{verdict}</div><div className="muted">{out.passed??0}/{out.total??0} tests · {out.runtime_ms??0} ms</div></>}{!busy&&!err&&out&&mode==='run'&&out.cases?.map((x,i)=>{let pass=x.verdict==='ACCEPTED'||x.status==='ACCEPTED';return <div className={`case ${pass?'pass':'fail'}`} key={i}>Input:{`\n`}{x.input||'(empty)'}{`\n`}Expected:{`\n`}{x.expected}{`\n`}Actual:{`\n`}{x.actual}</div>})}</div></section></div>}function Achievements(){let[d,setD]=useState();useEffect(()=>{api('/student/dashboard').then(setD)},[]);if(!d)return <p>Loading?</p>;let solved=d.courses?.reduce((n,x)=>n+(x.solved||0),0)||0;return <><h1>Achievements</h1><div className="cards"><div className="panel"><h2>Problems solved</h2><p>{solved}</p></div><div className="panel"><h2>Courses started</h2><p>{d.courses?.length||0}</p></div><div className="panel"><h2>Consistency</h2><p>Keep practicing daily!</p></div></div></>}
-function Dashboard(){let[d,setD]=useState(),[h,setH]=useState([]),[err,setErr]=useState('');useEffect(()=>{Promise.all([api('/student/dashboard'),api('/student/heatmap')]).then(([a,b])=>{setD(a);setH(b)}).catch(e=>setErr(e.message))},[]);if(err)return <div className="empty">{err}</div>;if(!d)return <div className="loading">Loading dashboard...</div>;let solved=d.courses?.reduce((n,x)=>n+(x.solved||0),0)||0;let total=d.courses?.reduce((n,x)=>n+(x.total||0),0)||0;let counts=Object.fromEntries(h.map(x=>[x.date,x.count]));let today=new Date();today.setHours(12,0,0,0);let start=new Date(today);start.setDate(today.getDate()-364);start.setDate(start.getDate()-start.getDay());let cells=[];for(let week=0;week<53;week++)for(let day=0;day<7;day++){let date=new Date(start);date.setDate(start.getDate()+week*7+day);if(date>today||date<new Date(today.getTime()-364*86400000))continue;let key=date.toISOString().slice(0,10),n=counts[key]||0;cells.push({key,n})}let level=n=>n===0?'l0':n===1?'l1':n<=3?'l2':n<=5?'l3':'l4';return <><div className="page-head"><div><h1>Student dashboard</h1><p className="muted">Track your progress and practice activity.</p></div></div><div className="grid cols-3"><div className="card stat streak"><span>Current streak</span><strong>{d.streak||0}</strong><small>days</small></div><div className="card stat"><span>Total solved</span><strong>{solved}</strong><small>of {total} problems</small></div><div className="card stat"><span>Overall rank</span><strong>{d.overall_rank||d.rank||'-'}</strong><small>among students</small></div></div><div className="grid cols-3">{d.courses?.map(x=>{let pct=x.total?100*(x.solved||0)/x.total:0;return <div className="card" key={x.id}><h2>{x.name}</h2><div className="progress"><span style={{width:pct+'%'}}/></div><p>{x.solved||0} of {x.total||0} solved</p><div><span className="badge easy">Easy {x.easy||0}</span> <span className="badge medium">Medium {x.medium||0}</span> <span className="badge hard">Hard {x.hard||0}</span></div></div>})}</div><div className="card"><h2>Activity</h2><div className="heat">{cells.map(x=><div className={`cell ${level(x.n)}`} title={`${x.key}: ${x.n} submissions`} key={x.key}/>)}</div><div className="heat-legend"><span>Less</span><i className="cell l0"/><i className="cell l1"/><i className="cell l2"/><i className="cell l3"/><i className="cell l4"/><span>More</span></div></div></>}function UploadPage({kind}){let[file,setFile]=useState(),[result,setResult]=useState(),[err,setErr]=useState('');let label=kind==='students'?'Students':'Faculty';async function upload(){setErr('');setResult();if(!file){setErr('Choose an .xlsx file.');return}if(!file.name.toLowerCase().endsWith('.xlsx')){setErr('Only .xlsx files are accepted.');return}let fd=new FormData();fd.append('file',file);try{let r=await fetch(API+'/admin/upload/'+kind,{method:'POST',headers:auth(),body:fd});let x=await r.json();if(!r.ok)throw Error(x.detail||'Upload failed');setResult(x)}catch(e){setErr(e.message)}}return <><div className="page-head"><div><h1>Upload {label}</h1><p className="muted">Import {label.toLowerCase()} from an Excel template.</p></div></div><div className="card"><input type="file" accept=".xlsx" onChange={e=>setFile(e.target.files[0])}/><a className="btn btn-ghost" href={API+'/admin/templates/'+kind} download>Download template</a><button className="btn btn-primary" onClick={upload}>Upload</button>{err&&<div className="alert error">{err}</div>}</div>{result&&<div className="alert success">Created: <b>{result.created}</b> · Updated: <b>{result.updated}</b></div>}{result&&<div className="table-wrap"><table><thead><tr><th>Row</th><th>Reason</th></tr></thead><tbody>{result.failed?.length?result.failed.map((x,i)=><tr key={i}><td>{x.row}</td><td>{x.reason}</td></tr>):<tr><td colSpan="2">No failed rows.</td></tr>}</tbody></table></div>}</>}function AdminDashboard(){let[d,setD]=useState(),[f,setF]=useState({year:'',dept:'',section:'',faculty_id:'',page:1}),[err,setErr]=useState('');useEffect(()=>{let q=new URLSearchParams(Object.entries(f).filter(([,v])=>v));api('/admin/dashboard?'+q).then(setD).catch(e=>setErr(e.message))},[f]);if(err)return <div className="empty">{err}</div>;if(!d)return <div className="loading">Loading admin dashboard...</div>;let change=(k,v)=>setF({...f,[k]:v,page:1});return <><div className="page-head"><div><h1>Admin dashboard</h1><p className="muted">Manage student progress and rankings.</p></div></div><div className="filters"><input placeholder="Year" value={f.year} onChange={e=>change('year',e.target.value)}/><input placeholder="Department" value={f.dept} onChange={e=>change('dept',e.target.value)}/><input placeholder="Section" value={f.section} onChange={e=>change('section',e.target.value)}/><input placeholder="Faculty ID" value={f.faculty_id} onChange={e=>change('faculty_id',e.target.value)}/><button onClick={()=>setF({...f,page:1})}>Apply</button></div><div className="card"><h2>Top 10 leaderboard</h2>{(d.top10||[]).map((x,i)=><p key={x.reg_no}>{i+1}. {x.name} ({x.reg_no}) — {x.solved} solved, {x.points} points</p>)}</div><div className="table-wrap"><table><thead><tr><th>Reg No</th><th>Name</th><th>Year</th><th>Dept</th><th>Section</th><th>Easy</th><th>Medium</th><th>Hard</th><th>Points</th></tr></thead><tbody>{(d.students||[]).map(x=><tr key={x.reg_no}><td>{x.reg_no}</td><td>{x.name}</td><td>{x.year}</td><td>{x.dept}</td><td>{x.section}</td><td>{x.easy}</td><td>{x.medium}</td><td>{x.hard}</td><td>{x.points}</td></tr>)}</tbody></table></div><div><button disabled={d.page<=1} onClick={()=>setF({...f,page:d.page-1})}>Previous</button> Page {d.page} of {d.pages||1} <button disabled={d.page>=d.pages} onClick={()=>setF({...f,page:d.page+1})}>Next</button></div></>}function FacultyHome(){let[c,setC]=useState(),[err,setErr]=useState('');useEffect(()=>{api('/faculty/courses').then(setC).catch(e=>setErr(e.message))},[]);if(err)return <div className="empty">{err}</div>;if(!c)return <div className="loading">Loading courses...</div>;if(!c.length)return <div className="empty">No mapped courses.</div>;return <><div className="page-head"><div><h1>Faculty courses</h1><p className="muted">Review progress for your assigned courses.</p></div></div><div className="grid cols-3">{c.map(x=><a className="card link" href={'/faculty/courses/'+x.id} onClick={e=>{e.preventDefault();go('/faculty/courses/'+x.id)}} key={x.id}><h2>{x.name}</h2><p className="muted">{x.code}</p></a>)}</div></>}function FacultyCourse({id}){let[d,setD]=useState(),[opts,setOpts]=useState({dept:[],year:[],section:[]}),[draft,setDraft]=useState({dept:'',year:'',section:''}),[filters,setFilters]=useState({dept:'',year:'',section:''}),[err,setErr]=useState('');useEffect(()=>{api('/faculty/courses/'+id+'/filters').then(setOpts).catch(e=>setErr(e.message))},[id]);useEffect(()=>{let q=new URLSearchParams(Object.entries(filters).filter(([,v])=>v));api('/faculty/courses/'+id+'/dashboard'+(q.toString()?'?'+q:'')).then(setD).catch(e=>setErr(e.message))},[id,filters]);if(err)return <div className="empty">{err}</div>;if(!d)return <div className="loading">Loading course dashboard...</div>;let rows=(d.students||[]).map(x=>({...x,total:x.total??((x.easy||0)+(x.medium||0)+(x.hard||0))})).sort((a,b)=>b.total-a.total||String(a.reg_no).localeCompare(String(b.reg_no)));let label=[filters.dept,filters.year&&'Year '+filters.year,filters.section&&'Section '+filters.section].filter(Boolean).join(' · ');return <><div className="page-head"><div><h1>Course dashboard</h1><p className="muted">Student progress and leaderboard.</p></div><button className="btn btn-primary" onClick={async()=>{let q=new URLSearchParams(Object.entries(filters).filter(([,v])=>v));let r=await fetch(API+'/faculty/courses/'+id+'/report'+(q.toString()?'?'+q:''),{headers:auth()});let b=await r.blob();let a=document.createElement('a');a.href=URL.createObjectURL(b);let m=(r.headers.get('content-disposition')||'').match(/filename=([^;]+)/);a.download=m?m[1].replace(/["']/g,''):'course-report.xlsx';a.click();URL.revokeObjectURL(a.href)}}>Download report{label&&' ('+label+')'}</button></div><div className="filters"><div><label htmlFor="faculty-dept">Dept</label><select id="faculty-dept" value={draft.dept} onChange={e=>setDraft({...draft,dept:e.target.value})}><option value="">All</option>{(opts.dept||[]).map(v=><option key={v} value={v}>{v}</option>)}</select></div><div><label htmlFor="faculty-year">Year</label><select id="faculty-year" value={draft.year} onChange={e=>setDraft({...draft,year:e.target.value})}><option value="">All</option>{(opts.year||[]).map(v=><option key={v} value={v}>{v}</option>)}</select></div><div><label htmlFor="faculty-section">Section</label><select id="faculty-section" value={draft.section} onChange={e=>setDraft({...draft,section:e.target.value})}><option value="">All</option>{(opts.section||[]).map(v=><option key={v} value={v}>{v}</option>)}</select></div><button className="btn btn-primary" onClick={()=>setFilters(draft)}>Apply</button><button className="btn btn-ghost" onClick={()=>{let reset={dept:'',year:'',section:''};setDraft(reset);setFilters(reset)}}>Reset</button></div>{!rows.length?<div className="empty">No students match the selected filters.</div>:<><div className="grid cols-3"><div className="card stat"><span>Students</span><strong>{rows.length}</strong></div><div className="card stat"><span>Average solved</span><strong>{Number(d.average_solved||0).toFixed(1)}</strong></div></div><div className="table-wrap"><table><thead><tr><th>Reg No</th><th>Student</th><th>Easy</th><th>Medium</th><th>Hard</th><th>Total</th></tr></thead><tbody>{rows.map(x=><tr key={x.reg_no}><td>{x.reg_no}</td><td>{x.name||x.student_name}</td><td>{x.easy||0}</td><td>{x.medium||0}</td><td>{x.hard||0}</td><td>{x.total}</td></tr>)}</tbody></table></div></>}</>}export default function App(){let[path,setPath]=useState(location.pathname),[user,setUser]=useState(null);useEffect(()=>{let f=()=>setPath(location.pathname);addEventListener('popstate',f);return()=>removeEventListener('popstate',f)},[]);if(!localStorage.getItem('aa_token'))return <Login done={setUser}/>;let m=path.match(/^\/courses\/(\d+)\/problems\/(\d+)$/);let l=path.match(/^\/courses\/(\d+)\/leaderboard$/);let c=path.match(/^\/courses\/(\d+)$/);let fc=path.match(/^\/faculty\/courses\/(\d+)$/);return <div className="app-shell"><Nav/><main className="page">{path==='/admin/upload/students'?<UploadPage kind='students'/>:path==='/admin/upload/faculty'?<UploadPage kind='faculty'/>:path==='/admin'?<AdminDashboard/>:path==='/faculty'?<FacultyHome/>:fc?<FacultyCourse id={fc[1]}/>:m?<Problem cid={m[1]} pid={m[2]}/>:l?<Leaderboard id={l[1]}/>:c?<Course id={c[1]}/>:path==='/student/dashboard'?<Dashboard/>:path==='/student/achievements'?<Achievements/>:<Home/>}</main></div>}
+import React, { useState, useEffect } from 'react';
+import authService from './auth/services/authService.js';
+import { navigate, useRoute } from './app/router.jsx';
+
+// Auth Pages
+import Login from './auth/pages/Login.jsx';
+import ChangePassword from './auth/pages/ChangePassword.jsx';
+
+// Admin Pages
+import AdminDashboard from './admin/pages/Dashboard.jsx';
+import BulkImport from './admin/pages/BulkImport.jsx';
+import Analytics from './admin/pages/Analytics.jsx';
+import AdminSettings from './admin/pages/Settings.jsx';
+import AdminStudents from './admin/pages/Students.jsx';
+import AdminFaculty from './admin/pages/Faculty.jsx';
+import AdminCourses from './admin/pages/Courses.jsx';
+
+// Faculty Pages
+import FacultyDashboard from './faculty/pages/Dashboard.jsx';
+import FacultyMyCourses from './faculty/pages/MyCourses.jsx';
+import FacultyCourseDetails from './faculty/pages/CourseDetails.jsx';
+import FacultyProfile from './faculty/pages/Profile.jsx';
+import { FacultyStudents, FacultySubmissions } from './faculty/pages/Students.jsx';
+import FacultyProblems from './faculty/pages/Problems.jsx';
+import FacultyReports from './faculty/pages/Reports.jsx';
+
+// Student Pages
+import StudentDashboard from './student/pages/Dashboard.jsx';
+import StudentMyCourses from './student/pages/MyCourses.jsx';
+import StudentPractice from './student/pages/Practice.jsx';
+import CourseDetails from './student/pages/CourseDetails.jsx';
+import CodingWorkspace from './student/pages/CodingWorkspace.jsx';
+import Leaderboard from './student/pages/Leaderboard.jsx';
+import Achievements from './student/pages/Achievements.jsx';
+import StudentProfile from './student/pages/Profile.jsx';
+import StudentSubmissions from './student/pages/Submissions.jsx';
+
+export default function App() {
+  const { path } = useRoute();
+  const [currentUser, setCurrentUser] = useState(() => authService.getUser());
+
+  const token = authService.getToken();
+  const role  = authService.getRole();
+
+  // If user role doesn't match restricted routes, safely redirect in effect
+  useEffect(() => {
+    if (!token || !currentUser) return;
+
+    if (currentUser.must_change_pw && path !== '/change-password') {
+      navigate('/change-password');
+      return;
+    }
+
+    if (path === '/' || path === '/login') {
+      navigate(authService.homePathForRole(role));
+      return;
+    }
+
+    if (path.startsWith('/admin') && role !== 'admin') {
+      navigate(authService.homePathForRole(role));
+      return;
+    }
+
+    if (path.startsWith('/faculty') && role !== 'faculty') {
+      navigate(authService.homePathForRole(role));
+      return;
+    }
+  }, [path, token, currentUser, role]);
+
+  // If not authenticated, always show Login (or handle login callback)
+  if (!token || !currentUser) {
+    return <Login onLoginSuccess={(u) => setCurrentUser(u)} />;
+  }
+
+  // If user must change password
+  if (currentUser.must_change_pw) {
+    return <ChangePassword />;
+  }
+
+  if (path === '/change-password') {
+    return <ChangePassword />;
+  }
+
+  // --- ROUTE MATCHING ---
+  // Root or login path -> render role home component
+  if (path === '/' || path === '/login') {
+    if (role === 'admin') return <AdminDashboard path={path} />;
+    if (role === 'faculty') return <FacultyDashboard path={path} />;
+    return <StudentDashboard path={path} />;
+  }
+
+  // 1. CODING WORKSPACE: /courses/:cid/problems/:pid
+  const problemMatch = path.match(/^\/courses\/(\d+)\/problems\/(\d+)$/);
+  if (problemMatch) {
+    return (
+      <CodingWorkspace
+        path={path}
+        courseId={problemMatch[1]}
+        problemId={problemMatch[2]}
+      />
+    );
+  }
+
+  // 2. LEADERBOARD: /courses/:cid/leaderboard
+  const leaderboardMatch = path.match(/^\/courses\/(\d+)\/leaderboard$/);
+  if (leaderboardMatch) {
+    return (
+      <Leaderboard
+        path={path}
+        courseId={leaderboardMatch[1]}
+      />
+    );
+  }
+
+  // 3. COURSE PROBLEMS (Student): /courses/:cid
+  const courseMatch = path.match(/^\/courses\/(\d+)$/);
+  if (courseMatch) {
+    return (
+      <CourseDetails
+        path={path}
+        courseId={courseMatch[1]}
+      />
+    );
+  }
+
+  // 4. FACULTY COURSE DETAILS: /faculty/courses/:cid
+  const facultyCourseMatch = path.match(/^\/faculty\/courses\/(\d+)$/);
+  if (facultyCourseMatch) {
+    if (role !== 'faculty') {
+      return <StudentDashboard path={path} />;
+    }
+    return (
+      <FacultyCourseDetails
+        path={path}
+        courseId={facultyCourseMatch[1]}
+      />
+    );
+  }
+
+  // 5. ADMIN PORTAL ROUTES (Role guard: only admin)
+  if (path.startsWith('/admin')) {
+    if (role !== 'admin') {
+      if (role === 'faculty') return <FacultyDashboard path={path} />;
+      return <StudentDashboard path={path} />;
+    }
+    if (path === '/admin' || path === '/admin/dashboard') {
+      return <AdminDashboard path={path} />;
+    }
+    if (path === '/admin/import' || path === '/admin/upload/students' || path === '/admin/upload/faculty') {
+      return <BulkImport path={path} />;
+    }
+    if (path === '/admin/students') {
+      return <AdminStudents path={path} />;
+    }
+    if (path === '/admin/faculty') {
+      return <AdminFaculty path={path} />;
+    }
+    if (path === '/admin/courses') {
+      return <AdminCourses path={path} />;
+    }
+    if (path === '/admin/analytics') {
+      return <Analytics path={path} />;
+    }
+    if (path === '/admin/settings') {
+      return <AdminSettings path={path} />;
+    }
+    return <AdminDashboard path={path} />;
+  }
+
+  // 6. FACULTY PORTAL ROUTES (Role guard: only faculty)
+  if (path.startsWith('/faculty')) {
+    if (role !== 'faculty') {
+      if (role === 'admin') return <AdminDashboard path={path} />;
+      return <StudentDashboard path={path} />;
+    }
+    if (path === '/faculty' || path === '/faculty/dashboard') {
+      return <FacultyDashboard path={path} />;
+    }
+    if (path === '/faculty/courses') {
+      return <FacultyMyCourses path={path} />;
+    }
+    if (path === '/faculty/students') {
+      return <FacultyStudents path={path} />;
+    }
+    if (path === '/faculty/problems') {
+      return <FacultyProblems path={path} />;
+    }
+    if (path === '/faculty/reports') {
+      return <FacultyReports path={path} />;
+    }
+    if (path === '/faculty/submissions') {
+      return <FacultySubmissions path={path} />;
+    }
+    if (path === '/faculty/profile') {
+      return <FacultyProfile path={path} />;
+    }
+    return <FacultyDashboard path={path} />;
+  }
+
+  // 7. STUDENT PORTAL ROUTES
+  if (path === '/student' || path === '/student/dashboard') {
+    return <StudentDashboard path={path} />;
+  }
+  if (path === '/student/courses') {
+    return <StudentMyCourses path={path} />;
+  }
+  if (path === '/student/practice') {
+    return <StudentPractice path={path} />;
+  }
+  if (path === '/student/achievements') {
+    return <Achievements path={path} />;
+  }
+  if (path === '/student/submissions') {
+    return <StudentSubmissions path={path} />;
+  }
+  if (path === '/student/profile') {
+    return <StudentProfile path={path} />;
+  }
+
+  // Fallback to role home
+  if (role === 'admin') return <AdminDashboard path={path} />;
+  if (role === 'faculty') return <FacultyDashboard path={path} />;
+  return <StudentDashboard path={path} />;
+}
